@@ -1,160 +1,386 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[cod]
-*$py.class
+import discord
+from discord.ext import commands
+import asyncio
+import sqlite3
 
-# C extensions
-*.so
+intents = discord.Intents.all()
+bot = commands.Bot(command_prefix="IT ", intents=intents)
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+class CustomHelpCommand(commands.HelpCommand):
+  async def send_bot_help(self, mapping):
+      embed = discord.Embed(
+          title="Command List",
+          description="Use `IT help <command>` for more info on a command.",
+          color=0xFF0000  # Red color
+      )
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
+      for cog, commands in mapping.items():
+          if cog is None:
+              category = "No Category"
+          else:
+              category = cog.qualified_name
+          command_signatures = [f"{cmd.name}" for cmd in commands]
+          if command_signatures:
+              embed.add_field(name=category, value=", ".join(command_signatures), inline=False)
 
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
+      channel = self.get_destination()
+      await channel.send(embed=embed)
 
-# Translations
-*.mo
-*.pot
+  async def send_command_help(self, command):
+      embed = discord.Embed(
+          title=f"Command: {command.name}",
+          description=command.help,
+          color=0xFF0000  # Red color
+      )
+      channel = self.get_destination()
+      await channel.send(embed=embed)
 
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
+# Set the custom help command
+bot.help_command = CustomHelpCommand()
 
-# Flask stuff:
-instance/
-.webassets-cache
 
-# Scrapy stuff:
-.scrapy
+@bot.command(name="emojify", help="Converts text into emoji representations", category="Fun")
+async def emojify(ctx, *, text):
+  emojified_text = ""
+  for char in text:
+      if char.isalpha():
+          emojified_text += f":regional_indicator_{char.lower()}: "
+      elif char.isspace():
+          emojified_text += "   "
+      else:
+          emojified_text += char
 
-# Sphinx documentation
-docs/_build/
+  await ctx.send(emojified_text)
 
-# PyBuilder
-.pybuilder/
-target/
+allowed_user_id = 1139723334112772180
 
-# Jupyter Notebook
-.ipynb_checkpoints
+@bot.event
+async def on_ready():
+    print(f'{bot.user} has connected to Discord!')
 
-# IPython
-profile_default/
-ipython_config.py
+@bot.command(name="changestatus", help="Change the bot's status and activity")
+async def change_status(ctx, status: str, *, activity: str):
+    # Check if the user executing the command has the allowed ID
+    if ctx.author.id != allowed_user_id:
+        await ctx.send("You are not authorized to use this command.")
+        return
 
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
+    valid_statuses = ["online", "idle", "dnd", "invisible"]
 
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
+    if status.lower() not in valid_statuses:
+        await ctx.send("Invalid status. Valid statuses are: online, idle, dnd, invisible.")
+        return
 
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
+    await bot.change_presence(status=discord.Status[status.lower()], activity=discord.Game(name=activity))
+    await ctx.send(f"Bot status changed to {status.capitalize()} and activity set to {activity}.")
 
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/#use-with-ide
-.pdm.toml
+@bot.event
+async def on_ready():
+    print(f'{bot.user} has connected to Discord!')
 
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
+@bot.command(name="clear", help="Clear a specified number of messages")
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int):
+    await ctx.channel.purge(limit=amount + 1)  # +1 to include the command itself
+    await ctx.send(f"Cleared {amount} messages.")
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
+@clear.error
+async def clear_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You don't have the required permissions to manage messages.")
 
-# SageMath parsed files
-*.sage.py
+@bot.command(name="kick", help="Kick a user from the server")
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason="No reason provided"):
+    await member.kick(reason=reason)
+    await ctx.send(f"{member.mention} has been kicked. Reason: {reason}")
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+@kick.error
+async def kick_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You don't have the required permissions to kick members.")
 
-# Spyder project settings
-.spyderproject
-.spyproject
+@bot.command(name="ban", help="Ban a user from the server")
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason="No reason provided"):
+    await member.ban(reason=reason)
+    await ctx.send(f"{member.mention} has been banned. Reason: {reason}")
 
-# Rope project settings
-.ropeproject
+@ban.error
+async def ban_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You don't have the required permissions to ban members.")
 
-# mkdocs documentation
-/site
+@bot.command(name="mute", help="Mute a user in the server")
+@commands.has_permissions(manage_roles=True)
+async def mute(ctx, member: discord.Member, *, reason="No reason provided"):
+    # Assuming there's a role named "Muted" in the server
+    muted_role = discord.utils.get(ctx.guild.roles, name="Muted")
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+    if not muted_role:
+        await ctx.send("The 'Muted' role is not found. Please create the role and try again.")
+        return
 
-# Pyre type checker
-.pyre/
+    await member.add_roles(muted_role, reason=reason)
+    await ctx.send(f"{member.mention} has been muted. Reason: {reason}")
 
-# pytype static type analyzer
-.pytype/
+@mute.error
+async def mute_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You don't have the required permissions to manage roles.")
 
-# Cython debug symbols
-cython_debug/
+@bot.command(name="say", help="Repeats a message")
+@commands.has_permissions(manage_messages=True)
+async def say(ctx, *, message):
+    await ctx.send(message)
+    await ctx.message.delete()
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
+@say.error
+async def say_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You don't have the required permissions to manage messages.")
+
+@bot.command(name="reply", help="Replies to a message and deletes the original")
+@commands.has_permissions(manage_messages=True)
+async def reply(ctx, message_id: int, *, reply_message):
+    try:
+        original_message = await ctx.channel.fetch_message(message_id)
+    except discord.NotFound:
+        await ctx.send("Message not found.")
+        return
+
+    await original_message.reply(reply_message)
+    await ctx.message.delete()
+
+@reply.error
+async def reply_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You don't have the required permissions to manage messages.")
+
+@bot.command(name="webhooksay", help="Repeats a message using a webhook")
+@commands.has_permissions(manage_webhooks=True)
+async def webhooksay(ctx, username, *, message):
+    webhook = await ctx.channel.create_webhook(name=username)
+    await webhook.send(message, username=username)
+    await webhook.delete()
+
+@bot.event
+async def on_ready():
+    await bot.change_presence(status=discord.Status.dnd, activity=discord.Game(name="IT help | join support server"))
+
+    print("Bot is currently in the following servers:")
+    for guild in bot.guilds:
+        try:
+            invites = await guild.invites()
+            invite = invites[0].url if invites else await guild.text_channels[0].create_invite()
+            print(f"- {guild.name} (ID: {guild.id}) - Invite Link: {invite}")
+        except discord.Forbidden:
+            # Bot doesn't have permission to create invites in this server
+            print(f"- {guild.name} (ID: {guild.id}) - Invite Link: Permission Denied")
+
+@bot.command(name="servers", help="Print information about all servers the bot is in")
+async def print_servers(ctx):
+    # Check if the user invoking the command has the required permission
+    if ctx.author.id != 1139723334112772180:  # Replace with the desired user ID
+        await ctx.send("You don't have the required permission to use this command.")
+        return
+
+    message = "Bot is currently in the following servers:\n"
+    for guild in bot.guilds:
+        message += f"- {guild.name} (ID: {guild.id})\n"
+
+    await ctx.send(message)
+
+@print_servers.error
+async def print_servers_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You don't have the required permissions to use this command.")
+
+
+# Replace with the desired user ID who can use the command
+allowed_user_id = 1139723334112772180
+
+@bot.command(name="leaveserver", help="Leave a server based on ID")
+async def leave_server(ctx, server_id: int):
+    # Check if the user invoking the command has the required permission
+    if ctx.author.id != allowed_user_id:
+        await ctx.send("You don't have the required permission to use this command.")
+        return
+
+    guild = bot.get_guild(server_id)
+    if guild:
+        await guild.leave()
+        await ctx.send(f"Left the server: {guild.name} (ID: {guild.id})")
+    else:
+        await ctx.send("Server not found.")
+
+@leave_server.error
+async def leave_server_error(ctx, error):
+    if isinstance(error, commands.MissingPermissions):
+        await ctx.send("You don't have the required permissions to use this command.")
+    elif isinstance(error, commands.BadArgument):
+        await ctx.send("Invalid server ID. Please provide a valid server ID.")
+
+# Connect to SQLite database
+conn = sqlite3.connect('server_info.db')
+c = conn.cursor()
+
+# Create the server_info table if it doesn't exist
+c.execute('''CREATE TABLE IF NOT EXISTS server_info
+             (server_id INTEGER PRIMARY KEY,
+              bio TEXT,
+              bump_channel INTEGER,
+              invite_channel INTEGER)''')
+
+
+@bot.command(name="setserverbio", help="Set the server bio")
+@commands.has_permissions(administrator=True)
+async def set_server_bio(ctx, *, bio):
+    server_id = ctx.guild.id
+    c.execute("INSERT OR REPLACE INTO server_info (server_id, bio) VALUES (?, ?)", (server_id, bio))
+    conn.commit()
+    await ctx.send("Server bio set successfully.")
+
+@bot.command(name="setbumpchannel", help="Set the bump channel")
+@commands.has_permissions(administrator=True)
+async def set_bump_channel(ctx, channel: discord.TextChannel):
+    server_id = ctx.guild.id
+    c.execute("INSERT OR REPLACE INTO server_info (server_id, bump_channel) VALUES (?, ?)", (server_id, channel.id))
+    conn.commit()
+    await ctx.send("Bump channel set successfully.")
+
+@bot.command(name="setinvitechannel", help="Set the invite channel")
+@commands.has_permissions(administrator=True)
+async def set_invite_channel(ctx, channel: discord.TextChannel):
+    server_id = ctx.guild.id
+    c.execute("INSERT OR REPLACE INTO server_info (server_id, invite_channel) VALUES (?, ?)", (server_id, channel.id))
+    conn.commit()
+    await ctx.send("Invite channel set successfully.")
+
+@bot.command(name="bump", help="Bump the server and share it with other servers")
+async def bump(ctx):
+    server_id = ctx.guild.id
+
+    # Retrieve server information from the database
+    c.execute("SELECT * FROM server_info WHERE server_id=?", (server_id,))
+    row = c.fetchone()
+
+    if not row:
+        await ctx.send("Server information not found. Please set the server bio, bump channel, and invite channel.")
+        return
+
+    # Unpack the values or use default values if there are fewer than expected
+    bio, bump_channel_id, invite_channel_id = row + (None,) * (3 - len(row))
+
+    # Get the bump channel
+    bump_channel = bot.get_channel(bump_channel_id)
+
+    # Get the invite channel
+    invite_channel = bot.get_channel(invite_channel_id)
+
+    # Check if the server has set a bio
+    if not bio:
+        await ctx.send("Server bio not set. Please use `IT setserverbio` to set a server bio.")
+        return
+
+    # Create an invite for the server with rate limit handling
+    try:
+        invite = await ctx.channel.create_invite(max_age=0, max_uses=0, unique=True)
+    except discord.Forbidden:
+        await ctx.send("Bot doesn't have permission to create invites in this server.")
+        return
+    except discord.HTTPException as e:
+        if e.status == 429:
+            retry_after = e.retry_after
+            await asyncio.sleep(retry_after)
+            # Retry the operation after waiting for the specified duration
+            try:
+                invite = await ctx.channel.create_invite(max_age=0, max_uses=0, unique=True)
+            except discord.Forbidden:
+                await ctx.send("Bot doesn't have permission to create invites in this server.")
+                return
+        else:
+            # Handle other HTTP exceptions
+            await ctx.send(f"An error occurred: {e}")
+            return
+
+    # Send the bump message to the bump channel
+    bump_message = f"**Server Bump!**\n\n{bio}\n\nInvite Link: {invite.url}"
+    await bump_channel.send(bump_message)
+
+conn = sqlite3.connect('moderation_history.db')
+c = conn.cursor()
+
+# Create the mod_history table if it doesn't exist
+c.execute('''CREATE TABLE IF NOT EXISTS mod_history
+             (user_id INTEGER,
+              command TEXT,
+              timestamp TEXT)''')
+
+@bot.event
+async def on_command(ctx):
+    # Log all commands to the database
+    user_id = ctx.author.id
+    command = ctx.command.name
+    timestamp = ctx.message.created_at
+
+    c.execute("INSERT INTO mod_history (user_id, command, timestamp) VALUES (?, ?, ?)",
+              (user_id, command, timestamp))
+    conn.commit()
+
+@bot.command(name="modhistory", aliases=["mh"], help="View command history for a user")
+async def mod_history(ctx, user: discord.User):
+    user_id = user.id
+
+    # Retrieve command history from the database
+    c.execute("SELECT * FROM mod_history WHERE user_id=?", (user_id,))
+    rows = c.fetchall()
+
+    if not rows:
+        await ctx.send(f"No command history found for {user.display_name}.")
+        return
+
+    # Display the command history
+    history_message = f"Command History for {user.display_name}:\n"
+    for row in rows:
+        _, command, timestamp = row
+        history_message += f"Command: {command}, Timestamp: {timestamp}\n"
+
+    await ctx.send(history_message)
+
+@mod_history.error
+async def mod_history_error(ctx, error):
+    if isinstance(error, commands.BadArgument):
+        await ctx.send("Invalid user. Please mention a valid user.")
+
+@bot.command(name="ping", help="Check bot latency")
+async def ping(ctx):
+    latency = round(bot.latency * 1000)
+    await ctx.send(f"Pong! Latency is {latency}ms.")
+
+@bot.command(name="echo", help="Echo a message")
+async def echo(ctx, *, message):
+    await ctx.send(message)
+
+@bot.command(name="userinfo", help="Get information about a user")
+async def user_info(ctx, user: discord.User):
+    embed = discord.Embed(title="User Information", color=0x00ff00)
+    embed.set_thumbnail(url=user.avatar_url)
+    embed.add_field(name="Username", value=user.name, inline=True)
+    embed.add_field(name="Discriminator", value=user.discriminator, inline=True)
+    embed.add_field(name="User ID", value=user.id, inline=True)
+    await ctx.send(embed=embed)
+
+@bot.command(name="serverinfo", help="Get information about the server")
+async def server_info(ctx):
+    guild = ctx.guild
+    embed = discord.Embed(title="Server Information", color=0x00ff00)
+    embed.set_thumbnail(url=guild.icon_url)
+    embed.add_field(name="Server Name", value=guild.name, inline=True)
+    embed.add_field(name="Server ID", value=guild.id, inline=True)
+    embed.add_field(name="Members", value=guild.member_count, inline=True)
+    await ctx.send(embed=embed)
+
+
+bot.run('MTE3MDQ4NzExOTc1MjQ3ODkxMQ.G8gY1d.CI8WR4tuiv1PCsYGmhvoBnmet4LhpDXDeniNJo')
